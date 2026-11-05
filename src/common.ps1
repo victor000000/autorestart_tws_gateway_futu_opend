@@ -73,3 +73,5 @@ function Test-IbGatewayLoggedIn {
 
 . (Join-Path $PSScriptRoot 'credentials.ps1')
 . (Join-Path $PSScriptRoot 'process-runner.ps1')
+
+. (Join-Path $PSScriptRoot 'paper-gateway.ps1')

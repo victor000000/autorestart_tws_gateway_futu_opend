@@ -46,19 +46,33 @@ Describe 'Gateway readiness controller with fully fake boundaries' {
         }
         finally { $env:PATHEXT = $original }
     }
-    It 'paper startup keeps the live batch unchanged and uses a separate configuration' {
+    It 'routes paper mode to the isolated starter without touching live readiness' {
+        Mock Start-IsolatedPaperGateway {}
+        & $Gateway -Paper -TimeoutSeconds 1
+        Should -Invoke Start-IsolatedPaperGateway -Times 1 -ParameterFilter { $TimeoutSeconds -eq 1 }
+        Should -Invoke Test-GatewayApiReady -Times 0
+        Should -Invoke Start-Process -Times 0
+    }
+    It 'rejects a direct paper launch without starting an application' {
+        Mock Start-IsolatedPaperGateway {}
+        { & $Gateway -Paper -UseDirectExe } | Should -Throw '*requires isolated IBC*'
+        Should -Invoke Start-IsolatedPaperGateway -Times 0
+        Should -Invoke Start-Process -Times 0
+    }
+    It 'does not reuse a paper process when starting the live mode' {
         $null = New-Item -ItemType Directory -Path (Join-Path $TestDrive 'ibc') -Force
-        $live = Join-Path $TestDrive 'ibc/StartGateway.bat'
-        $original = "set CONFIG=C:\synthetic\live.ini`r`nset TRADING_MODE=live`r`n"
-        [IO.File]::WriteAllText($live, $original)
+        Set-Content -LiteralPath (Join-Path $TestDrive 'ibc/StartGateway.bat') -Value 'rem synthetic fixture'
+        Mock Get-IbcGatewayProcesses {
+            if ($ConfigPath -like '*ibc-config.ini') { return @() }
+            return @([pscustomobject]@{ProcessId=200})
+        }
         Mock New-IbcConfig { $true }
         Mock Test-GatewayApiReady { $true }
         Mock Start-Process {}
-        & $Gateway -Paper -TimeoutSeconds 1
-        [IO.File]::ReadAllText($live) | Should -BeExactly $original
-        [IO.File]::ReadAllText((Join-Path $TestDrive 'ibc/StartPaperGateway.bat')) | Should -Match 'TRADING_MODE=paper'
-        Should -Invoke New-IbcConfig -Times 1 -ParameterFilter { $TradingMode -eq 'paper' -and $Path -like '*ibc-paper-config.ini' }
-        Should -Invoke Start-Process -Times 1 -ParameterFilter { $FilePath -like '*StartPaperGateway.bat' }
+        & $Gateway -TimeoutSeconds 1
+        Should -Invoke New-IbcConfig -Times 1 -ParameterFilter { $TradingMode -eq 'live' }
+        Should -Invoke Start-Process -Times 1
+        Should -Invoke Ensure-GatewayWindowHidden -Times 0
     }
     It 'does not hide a running gateway whose login is incomplete' {
         Mock Get-IbcGatewayProcesses { [pscustomobject]@{ProcessId=100} }

@@ -112,16 +112,38 @@ The tray helper reports expected-process/listener presence, not brokerage health
 
 The ignored IBC runtime contains locally customized absolute paths. Back it up privately before updates or moving the repository; a fresh upstream extraction is not necessarily equivalent. Keep private diagnostics out of Git. No runtime folder or historical screenshot was automatically deleted during restructuring.
 
-### Dedicated paper Gateway (2026-10-27)
+### Dedicated paper Gateway
 
-`start-ibgateway.ps1 -Paper` uses only the encrypted
-`ibkr_tws_gateway_paper` credential entry. It creates separate
-`secrets/ibc-paper-config.ini` and `ibc/StartPaperGateway.bat`, selects paper mode
-and port 4001, and leaves the live batch/configuration unchanged. Missing paper
-credentials fail closed; live credentials and 1Password fallback are forbidden
-for this mode. Existing running clients are checked, never terminated. Socket
-readiness does not prove identity: the options workspace verifies <EXPECTED_PAPER_ACCOUNT>.
+`start-ibgateway.ps1 -Paper -PrepareOnly` prepares the dedicated instance without
+launching an application or opening a login window. It uses only the encrypted
+`ibkr_tws_gateway_paper` entry and writes the ignored paper config/batch. Missing
+paper credentials fail closed; live credentials and 1Password fallback are
+forbidden for paper mode. `-UseDirectExe` is rejected with `-Paper`.
 
-WSL's enabled user unit `ibkr-paper-start.service` invokes this mode once at boot.
-It does not retry failed authentication in a loop. Confirm any security prompts
-manually. The offline suite includes paper selection and live-template preservation.
+`start-ibgateway.ps1 -Paper` launches that instance on **4002**, using
+`ibc/settings-paper` and `logs/ibc-paper`. The live config, settings, logs,
+processes, port 4001, and tray are not reused or altered. Process readiness
+requires the exact paper config argument and ownership of port 4002. A different
+process on 4002 causes a failure before any config write. An already-running
+paper instance is never reconfigured. Concurrent starts are serialized.
+
+The generated configuration uses `ExistingSessionDetectedAction=secondary`, so
+an account-session conflict terminates the new session instead of displacing an
+existing one. The API starts **read-only**, and second-factor timeout retries are
+disabled. Authentication/passkey and any first-time prompts remain manual. An
+explicit start may show Gateway UI; use `-PrepareOnly` for headless preparation.
+No application is launched during offline validation.
+
+Listener readiness does not establish account identity. Before changing a
+consumer's saved port, use a read-only managedAccounts probe and require the
+entire result to equal its existing expected paper account list. Never change
+that allowlist to fit the observed session. Enabling order submission is a
+separate explicit operator decision; this preparation does not enable it.
+
+A pre-existing WSL user unit `ibkr-paper-start.service` invokes `-Paper` at boot
+on this host. This source change does not register, enable, start, or restart the
+unit. The test suite covers mode/port isolation, live-batch preservation, ownership,
+credential failures, and prepare-only behavior using synthetic fixtures.
+
+The separate settings/log directories follow the
+[IBC multiple-instance guidance](https://github.com/IbcAlpha/IBC/blob/master/userguide.md#multiple-ibc-instances).

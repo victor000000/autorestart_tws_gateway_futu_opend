@@ -1,6 +1,6 @@
 ﻿# Starts Gateway and waits for its own API listener. Manual passkey stays manual.
 [CmdletBinding()]
-param([ValidateRange(1, 3600)][int]$TimeoutSeconds = 300, [switch]$UseDirectExe, [switch]$Paper)
+param([ValidateRange(1, 3600)][int]$TimeoutSeconds = 300, [switch]$UseDirectExe, [switch]$Paper, [switch]$PrepareOnly)
 . (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'src/common.ps1')
 . (Join-Path $ProjectRoot 'window-util.ps1')
 
@@ -12,24 +12,22 @@ function Start-GatewayTray {
     if (-not $existing) { Start-ProjectScript -Name 'gateway-tray.ps1' }
 }
 
+if ($PrepareOnly -and -not $Paper) { throw 'PrepareOnly is supported only with Paper.' }
+if ($Paper) {
+    if ($UseDirectExe) { throw 'Paper mode requires isolated IBC startup; direct launch is not supported.' }
+    Start-IsolatedPaperGateway -ProjectDirectory $ProjectRoot -TimeoutSeconds $TimeoutSeconds -PrepareOnly:$PrepareOnly
+    return
+}
+
+$liveConfigPath = Join-Path $ProjectRoot 'secrets/ibc-config.ini'
 $running = @(Get-Process -Name ibgateway, ibgateway1 -ErrorAction SilentlyContinue).Count -gt 0 -or
-    @(Get-IbcGatewayProcesses).Count -gt 0
+    @(Get-IbcGatewayProcesses -ConfigPath $liveConfigPath).Count -gt 0
 if (-not $running) {
     $directory = Join-Path $ProjectRoot 'ibc'
     $batch = Join-Path $directory 'StartGateway.bat'
     $useIbc = (Test-Path -LiteralPath $batch -PathType Leaf) -and -not $UseDirectExe
     if ($useIbc) {
-        $configName = if ($Paper) { 'secrets/ibc-paper-config.ini' } else { 'secrets/ibc-config.ini' }
-        $mode = if ($Paper) { 'paper' } else { 'live' }
-        $configPath = Join-Path $ProjectRoot $configName
-        $useIbc = New-IbcConfig -Path $configPath -TradingMode $mode
-        if ($Paper -and $useIbc) {
-            $template = [IO.File]::ReadAllText($batch)
-            $template = [regex]::Replace($template, '(?m)^set CONFIG=.*$', ('set CONFIG=' + $configPath))
-            $template = [regex]::Replace($template, '(?m)^set TRADING_MODE=.*$', 'set TRADING_MODE=paper')
-            $batch = Join-Path $directory 'StartPaperGateway.bat'
-            [IO.File]::WriteAllText($batch, $template, [Text.Encoding]::ASCII)
-        }
+        $useIbc = New-IbcConfig -Path (Join-Path $ProjectRoot 'secrets/ibc-config.ini') -TradingMode live
     }
     if ($useIbc) {
         Write-AppLog 'Starting IB Gateway via IBC; passkey confirmation may be required.' 'ibgateway'
@@ -54,9 +52,9 @@ else { Write-AppLog 'IB Gateway is already running; checking its API listener.' 
 
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 do {
-    if (Test-GatewayApiReady) {
+    if (Test-GatewayApiReady -ConfigPath $liveConfigPath) {
         Write-AppLog 'IB Gateway owns API port 4001 and accepts connections.' 'ibgateway'
-        $identities = @(Get-IbcGatewayProcesses | ForEach-Object { $_.ProcessId })
+        $identities = @(Get-IbcGatewayProcesses -ConfigPath $liveConfigPath | ForEach-Object { $_.ProcessId })
         $identities += @(Get-Process -Name ibgateway, ibgateway1 -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
         foreach ($identity in $identities) { $null = Ensure-GatewayWindowHidden -ProcessId $identity }
         Start-GatewayTray

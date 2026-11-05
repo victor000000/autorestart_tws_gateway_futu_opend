@@ -49,7 +49,9 @@ Describe 'IBC configuration publication' {
         Mock Get-StoredCredentials { [pscustomobject]@{ibkr_tws_gateway_paper=[pscustomobject]@{username='paper-demo';password='dummy'}} }
         New-IbcConfig -Path (Join-Path $TestDrive 'paper.ini') -TradingMode paper | Should -BeTrue
         Should -Invoke Write-PrivateTextFile -Times 1 -ParameterFilter {
-            $Text -like '*TradingMode=paper*' -and $Text -like '*OverrideTwsApiPort=4001*' -and $Text -notlike '*TradingMode=live*'
+            $Text -like '*TradingMode=paper*' -and $Text -like '*OverrideTwsApiPort=4002*' -and $Text -notlike '*TradingMode=live*' -and
+            $Text -like '*ExistingSessionDetectedAction=secondary*' -and $Text -like '*ReadOnlyApi=yes*' -and
+            $Text -like '*ReloginAfterSecondFactorAuthenticationTimeout=no*'
         }
     }
     It 'never falls back to live credentials for paper startup' {

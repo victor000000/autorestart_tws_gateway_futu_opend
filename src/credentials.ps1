@@ -146,7 +146,8 @@ function New-IbcConfig {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [string]$LogName = 'ibgateway',
-        [ValidateSet('live', 'paper')][string]$TradingMode = 'live'
+        [ValidateSet('live', 'paper')][string]$TradingMode = 'live',
+        [string]$SettingsPath
     )
     $credentials = $null
     $source = 'local encrypted store'
@@ -178,7 +179,12 @@ function New-IbcConfig {
         ('TradingMode=' + $TradingMode)
         'SecondFactorDevice=Passkey'
     ) -join "`r`n"
-    if ($TradingMode -eq 'paper') { $content += "`r`nOverrideTwsApiPort=4001`r`n" }
+    if ($TradingMode -eq 'paper') {
+        if (-not $SettingsPath) { $SettingsPath = Join-Path $ProjectRoot 'ibc/settings-paper' }
+        $content += "`r`nOverrideTwsApiPort=4002`r`nExistingSessionDetectedAction=secondary`r`nReadOnlyApi=yes"
+        $content += "`r`nReloginAfterSecondFactorAuthenticationTimeout=no"
+        $content += "`r`nIbDir=" + (ConvertTo-JavaPropertyValue -Value $SettingsPath) + "`r`n"
+    }
     Write-PrivateTextFile -Path $Path -Text ($content + "`r`n")
     Write-AppLog "IBC configuration written from $source." $LogName
     return $true

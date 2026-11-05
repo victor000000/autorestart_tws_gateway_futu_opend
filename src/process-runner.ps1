@@ -155,7 +155,12 @@ function Get-IbcProcesses {
 }
 
 function Get-IbcGatewayProcesses {
-    return @(Get-IbcProcesses -Application Gateway)
+    param([string]$ConfigPath)
+    $processes = @(Get-IbcProcesses -Application Gateway)
+    if (-not $ConfigPath) { return $processes }
+    # IBC receives its config filename as a complete command-line argument.
+    $pattern = '(?i)(?:^|\s)"?' + [regex]::Escape([IO.Path]::GetFullPath($ConfigPath)) + '"?(?:\s|$)'
+    return @($processes | Where-Object { $_.CommandLine -match $pattern })
 }
 
 function Test-ProcessPortOwner {
@@ -173,7 +178,8 @@ function Test-ProcessPortOwner {
 }
 
 function Test-GatewayApiReady {
-    $identities = @(Get-IbcGatewayProcesses | ForEach-Object { [int]$_.ProcessId })
+    param([string]$ConfigPath)
+    $identities = @(Get-IbcGatewayProcesses -ConfigPath $ConfigPath | ForEach-Object { [int]$_.ProcessId })
     $identities += @(Get-Process -Name 'ibgateway', 'ibgateway1' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
     return (Test-ProcessPortOwner -Port 4001 -ProcessIds $identities)
 }
