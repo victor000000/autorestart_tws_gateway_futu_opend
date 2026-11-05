@@ -1,0 +1,42 @@
+name: Offline PowerShell checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Windows / ${{ matrix.shell }}
+    runs-on: windows-2022
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Explicitly bootstrap pinned project-local test modules
+        run: ./tools/Install-TestDependencies.ps1
+
+      - name: Validate first-party encoding, syntax, analyzer rules, and offline fixtures
+        run: ./tools/Test-Project.ps1
+
+      - name: Upload synthetic test reports only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: synthetic-test-results-${{ matrix.shell }}
+          path: test-results/*.xml
+          if-no-files-found: ignore
+          retention-days: 7

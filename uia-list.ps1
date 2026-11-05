@@ -1,0 +1,14 @@
+﻿# Compatibility entry point. Edit the implementation, then run tools/Sync-EntryPoints.ps1.
+param(
+    [string]$ControlType = 'MenuItem',
+    [int]$Limit = 40
+)
+$ErrorActionPreference = 'Stop'
+try {
+    & (Join-Path $PSScriptRoot 'scripts/tools/uia-list.ps1') @PSBoundParameters @args
+    if (-not $?) { exit 1 }
+}
+catch {
+    Write-Error $_ -ErrorAction Continue
+    exit 1
+}

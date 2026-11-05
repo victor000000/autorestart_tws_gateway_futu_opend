@@ -1,0 +1,16 @@
+# Private runtime diagnostics (including screenshots and scratch tools)
+logs/
+
+# Private credentials/configs; only reviewed documentation is tracked
+secrets/*
+!secrets/README.txt
+
+# Locally customized IBC runtime and separate upstream source clone
+ibc/
+ibc-source/
+
+# Local development dependencies and generated verification reports
+.tools/
+test-results/
+archive/
+.claude/settings.local.json
