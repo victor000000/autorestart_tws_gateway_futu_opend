@@ -73,6 +73,10 @@ Counts are reported by the runner; assertions are behavior-oriented and are not 
 
 The workflow runs on pushes, pull requests, or manual dispatch after publication to GitHub. A local validation pass is not evidence of a hosted CI pass; check the repository Actions run for the commit being reviewed. Publishing or pushing is a separate action.
 
+## Deployment boundary
+
+Continuous deployment is not configured. This repository launches applications on a user-operated Windows desktop; CI does not deploy files, configure scheduled tasks or auto-logon, start services, or authenticate trading clients. Those remain explicit local operations after validation. A passing CI run establishes offline checks only, not vendor login compatibility, account access, live brokerage connectivity, or trading readiness.
+
 ## Validation incident during development
 
 An initial launcher-log fixture relied on a script-scoped path override that did not resolve as intended under Pester. It overwrote the local Gateway `launcher.log` with synthetic lines before the boundary was corrected. The tests now pass an explicit fixture path and guard temporary destinations; the log reader also disposes early-return streams. No order, login, credential, scheduler, or application-stop operation was issued by that test. The original diagnostic-log contents could not be reconstructed; no restoration is claimed. This incident is why path isolation is tested explicitly instead of relying on naming conventions.
