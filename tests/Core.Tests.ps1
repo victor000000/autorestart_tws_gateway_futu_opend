@@ -325,9 +325,9 @@ Describe 'IBKR Desktop session exclusivity' {
         Mock Get-Date { $script:tick++; ([datetime]'2026-01-01').AddSeconds($script:tick * 25) }
         { Stop-IbSessionProcesses -GraceSeconds 10 } | Should -Throw '*Could not stop TWS / IB Gateway*'
     }
-    It 'signs TWS/Gateway out before the desktop launch in the app entry point' {
+    It 'guards the desktop launch without stopping TWS or Gateway' {
         $source = [IO.File]::ReadAllText((Join-Path $RepositoryRoot 'scripts/apps/start-ibkr-desktop.ps1'))
-        $stopIndex = $source.IndexOf('Stop-IbSessionProcesses')
+        $stopIndex = $source.IndexOf('Assert-NoIbLaunchConflict -Application Desktop')
         $launchIndex = $source.IndexOf('Start-ManagedApplication')
         $stopIndex | Should -BeGreaterThan -1
         $launchIndex | Should -BeGreaterThan -1
@@ -352,12 +352,34 @@ Describe 'IBKR Desktop session exclusivity' {
         Mock Get-Date { $script:tick++; ([datetime]'2026-01-01').AddSeconds($script:tick * 25) }
         { Stop-IbkrDesktopProcesses -GraceSeconds 10 } | Should -Throw '*Could not stop IBKR Desktop*'
     }
-    It 'signs IBKR Desktop out before the TWS launch in the app entry point' {
+    It 'guards the TWS launch without stopping Desktop' {
         $source = [IO.File]::ReadAllText((Join-Path $RepositoryRoot 'scripts/apps/start-tws.ps1'))
-        $stopIndex = $source.IndexOf('Stop-IbkrDesktopProcesses')
+        $stopIndex = $source.IndexOf('Assert-NoIbLaunchConflict -Application Tws')
         $launchIndex = $source.IndexOf('Start-Process')
         $stopIndex | Should -BeGreaterThan -1
         $launchIndex | Should -BeGreaterThan -1
         $stopIndex | Should -BeLessThan $launchIndex
+    }
+}
+
+Describe 'Start commands preserve conflicting IBKR sessions' {
+    BeforeEach {
+        Mock Get-IbkrDesktopProcesses { @() }
+        Mock Get-IbSessionProcesses { @() }
+        Mock Stop-Process { throw 'Unexpected stop' }
+    }
+    It 'allows launch when no conflicting session exists' {
+        { Assert-NoIbLaunchConflict -Application Tws } | Should -Not -Throw
+        { Assert-NoIbLaunchConflict -Application Desktop } | Should -Not -Throw
+    }
+    It 'refuses TWS when Desktop is running without stopping it' {
+        Mock Get-IbkrDesktopProcesses { [pscustomobject]@{ Id = 5 } }
+        { Assert-NoIbLaunchConflict -Application Tws } | Should -Throw '*Existing clients were preserved*'
+        Should -Invoke Stop-Process -Times 0 -Exactly
+    }
+    It 'refuses Desktop when a direct or IBC session is running without stopping it' {
+        Mock Get-IbSessionProcesses { [pscustomobject]@{ Id = 6 } }
+        { Assert-NoIbLaunchConflict -Application Desktop } | Should -Throw '*Existing clients were preserved*'
+        Should -Invoke Stop-Process -Times 0 -Exactly
     }
 }
