@@ -1,5 +1,5 @@
 ﻿# Trader Workstation launcher used by the US group. IBKR Desktop uses the same
-# IBKR login, so a running desktop is signed out first.
+# IBKR login; refuse a conflicting launch without closing the existing client.
 [CmdletBinding()]
 param([switch]$UseDirectExe, [ValidateRange(1, 3600)][int]$TimeoutSeconds = 60)
 . (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'src/common.ps1')
@@ -7,7 +7,7 @@ if ((Get-Process -Name tws, tws1 -ErrorAction SilentlyContinue) -or @(Get-IbcPro
     Write-AppLog 'Trader Workstation is already running.' 'apps'
     return
 }
-Stop-IbkrDesktopProcesses
+Assert-NoIbLaunchConflict -Application Tws
 $installDirectory = 'C:\Jts\1050'
 $runtimeDirectory = Join-Path $ProjectRoot 'ibc'
 $batch = Join-Path $runtimeDirectory 'StartTWS.bat'
