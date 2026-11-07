@@ -93,6 +93,7 @@ if ($staticFailures.Count -gt 0) {
 Write-Host "Strict UTF-8 BOM and parser checks passed for $(@($files).Count) first-party files."
 & (Join-Path $PSScriptRoot 'Sync-EntryPoints.ps1') -Check
 Write-Host 'Compatibility wrappers match implementation parameters.'
+& (Join-Path $PSScriptRoot 'Test-Documentation.ps1')
 
 if (-not $SkipAnalyzer) {
     $settingsPath = Join-Path $projectRoot 'config/PSScriptAnalyzerSettings.psd1'
