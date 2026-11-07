@@ -1,5 +1,7 @@
 # Trading application launcher
 
+Version **0.0.3**. See the [release design and review](docs/release-0.0.3.md).
+
 Windows PowerShell scripts for launching CN and US trading workspaces, Futu OpenD, and IB Gateway. Run commands in an interactive Windows desktop under the user who owns the credentials.
 
 ## Quick start
@@ -25,7 +27,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./start-data-maintenance
 
 | Workspace | Applications |
 | --- | --- |
-| Maintenance | Futu OpenD + IB Gateway 10.51 |
+| Maintenance | Futu OpenD + IB Gateway 10.51 + OBS (recording) |
 | CN | Excel + OBS (recording) + 快期3/Q73N + 咏春大师2/AlgoMaster + wh6; ZSQH login worker |
 | US | Excel + OBS (recording) + TWS 10.50 + thinkorswim + Futubull + TradingView; sequential Futubull/thinkorswim login workers |
 
@@ -41,7 +43,7 @@ Starting a workspace also starts OBS recording. `start-obs.ps1` launches OBS wit
 
 `start-shinny.ps1`, `start-yongchun.ps1`, `start-schwab.ps1`, and `start-futubull.ps1` log the application in by default after they launch it; pass `-NoLogin` to skip the login worker. An application that was already running is not re-authenticated — run `login-zsqh-clients.ps1`, `login-thinkorswim.ps1`, or `login-futubull.ps1` explicitly for that. Groups that dispatch a login coordinator pass `-NoLogin` to their starters, so only one worker drives the shared desktop input lock. Re-running a group whose clients are already authenticated still exits successfully: 快期3 is recognized by its live main window and 咏春大师2 by its hidden login form, and no input is sent. IBKR credential entry remains IBC-driven.
 
-Before a new TWS launch, the launcher closes IBKR Desktop. Before a new IBKR Desktop launch, it closes TWS and IB Gateway, including recognized IBC Java sessions. **TWS does not explicitly stop Gateway, and Gateway does not stop TWS/Desktop.** Shared IBKR credentials can cause session conflicts; choose the required product and verify authentication manually. The full group includes both Gateway and TWS and does not serialize their IBKR logins.
+A new TWS launch refuses to proceed while IBKR Desktop is running. A new IBKR Desktop launch refuses to proceed while TWS or IB Gateway is running. Existing clients are preserved; explicitly stop the conflicting client only when intended. TWS and Gateway can still coexist locally, so shared credentials may cause an upstream session conflict. The full group includes both and does not serialize their IBKR logins.
 
 Passkey, MFA, and Windows Security prompts require manual attention. GUI login workers need an idle desktop; unexpected screens are left for manual review. Worker completion alone does not prove every session authenticated.
 
