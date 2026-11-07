@@ -28,11 +28,11 @@ Q73N's installer stages the next release in a new version directory whose `Q73N.
 
 [App defaults](../config/apps.psd1) expand `%APPDATA%` and `%LOCALAPPDATA%` at runtime. [Group configuration](../config/groups.psd1) controls membership; [entry-point mapping](../config/entrypoints.psd1) maps public command names to implementations. These files contain no passwords. Preserve UTF-8 BOM when editing PowerShell data files.
 
-Maintenance readiness expects local TCP ports **11111 for Futu OpenD** and **4001 for Gateway**. Configure the applications to match these expectations, or deliberately update the checks in `scripts/apps/start-futu-opend.ps1` and `src/process-runner.ps1` together with their tests. An unrelated process listening on a port does not satisfy readiness.
+Maintenance readiness expects local TCP ports **11111 for Futu OpenD** and **4001 for Gateway**. Configure the applications to match these expectations. A deliberate port change requires reviewing the application settings, ownership checks in `scripts/apps/start-futu-opend.ps1` and `src/process-runner.ps1`, specialized Gateway configuration, consumers, docs, and tests together. Paper port 4002 is isolated in `src/paper-gateway.ps1` and `src/credentials.ps1`. An unrelated process listening on a port does not satisfy readiness.
 
 ## Credentials and IBC
 
-For automatic IBKR credential entry, provide the locally configured IBC runtime under `ibc/`. Review its batch files and settings privately; runtime binaries and machine-specific files are intentionally not versioned. Gateway and TWS use IBC when their batch file exists and credentials are available; otherwise they attempt direct launch for manual login. `-UseDirectExe` explicitly selects direct launch.
+For automatic IBKR credential entry, provide the locally configured IBC runtime under `ibc/`. Review its batch files and settings privately; runtime binaries and machine-specific files are intentionally not versioned. The live Gateway and TWS use IBC when their batch file exists and credential configuration returns usable credentials; a missing batch or an unavailable credential result selects direct launch for manual login. Credential read/validation/publication errors can terminate startup instead of falling back. `-UseDirectExe` explicitly selects direct launch.
 
 The IBKR credential refresh reads a 1Password item using the `op` CLI. Install and authorize that CLI if using this path. The default item ID is workstation-specific; supply your own when configuring another account:
 
@@ -44,7 +44,7 @@ This creates or updates the `ibkr_tws_gateway` entry in `secrets/credentials.sec
 
 The updater only manages IBKR. thinkorswim and ZSQH login workers depend on existing application-specific entries in the private credential store; this repository provides no general credential provisioning wizard. Complete those logins manually if their entries are unavailable. Prefer Futubull's own Automatic Login; the worker does not unlock trading.
 
-The generated IBC configuration sets `TradingMode=live` and `SecondFactorDevice=Passkey`; no paper-mode launcher switch is provided. Review `src/credentials.ps1` before adapting this project to a different mode.
+The default live path generates `TradingMode=live` and `SecondFactorDevice=Passkey`. Dedicated paper startup is implemented through `start-ibgateway.ps1 -Paper`; it requires the separate `ibkr_tws_gateway_paper` entry, uses port 4002 and a read-only API, and has no live-credential or 1Password fallback. The updater above provisions only the live entry; a paper credential provisioning wizard is not supplied. See [dedicated paper Gateway](operations.md#dedicated-paper-gateway) before preparing or launching it. `-PrepareOnly` writes private configuration and directories, so it is headless preparation, not a read-only diagnostic.
 
 IBC receives a generated **plaintext** `secrets/ibc-config.ini` with restricted user/SYSTEM permissions. It persists for supervisor restarts. Do not delete it while a supervisor depends on it or copy it into shared folders. See [credential storage](../secrets/README.txt) and [authentication boundaries](operations.md#credentials).
 
@@ -59,7 +59,7 @@ $LASTEXITCODE
 
 Complete visible authentication/passkey prompts before the worker timeout. A zero exit confirms worker completion; check the application for upstream connection and account status. For market groups, inspect each brokerage session manually even after a successful wait. The [operations guide](operations.md#troubleshooting) explains where to find failures.
 
-Choose between IBKR Desktop, TWS, and Gateway according to your workflow. Desktop launch closes TWS/Gateway; TWS launch closes Desktop. Gateway/TWS are not mutually stopped by the launchers, so using the same IBKR credentials can still cause a session conflict.
+Choose between IBKR Desktop, TWS, and Gateway according to your workflow. A new Desktop launch refuses a running TWS/Gateway; a new TWS launch refuses a running Desktop. Neither start command closes the conflicting client. Gateway/TWS are not mutually stopped by the launchers, so using the same IBKR credentials can still cause a session conflict.
 
 ## Optional logon task
 
@@ -76,3 +76,11 @@ Validate manual startup before registering a task. `setup-autostart-task.ps1` cr
 Registration uses `-Force` and can replace an existing task with that name. Inspect its state in Task Scheduler. No Startup-folder fallback is created on failure. Enabling the task does not remove manual authentication requirements or resolve Gateway/TWS session conflicts.
 
 Windows auto-logon is separate from this task. Its helper writes a password to Winlogon registry data; it is not required for manual use and is not part of this checklist.
+
+## Configuration changes and portable installs
+
+The repository has no central environment-file or general configuration override layer. Edit ordinary executable paths in [apps.psd1](../config/apps.psd1), membership in [groups.psd1](../config/groups.psd1), and worker coverage in [logins.psd1](../config/logins.psd1). Keep worker entries consistent: `Worker` is a public mapped command, `ScriptArguments` is an argument array, and `CoveredBy` names group coordinator/worker entries that suppress duplicate individual login. Membership alone does not wait for app readiness.
+
+Gateway/TWS/Excel/TradingView have specialized source paths; changing an app table does not override them. Q73N `Manifest='dir.xml'` selects the build named by `<current>`; removing it enables numeric directory discovery instead. No environment variable overrides are promised beyond the explicit path expansion in the app table.
+
+A source-only clone does not contain vendor apps, local IBC batches, credentials, settings, workbooks, runtime logs, scheduled tasks, or Windows login settings. Rebuild those local prerequisites deliberately. DPAPI data copied from another user or computer is not a portable credential backup. Never run the full-group starter merely to validate a new checkout: it launches both Gateway and TWS and can encounter an upstream shared-account conflict.
