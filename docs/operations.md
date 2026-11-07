@@ -11,10 +11,10 @@ Run from the repository root in 64-bit Windows PowerShell 5.1, for example `.\st
 | `start-data-maintenance.ps1` | Futu OpenD + Gateway + OBS recording |
 | `start-cn-market.ps1` | CN apps + ZSQH login worker |
 | `start-us-market.ps1` | US apps including TWS + sequential Futubull/thinkorswim login workers |
-| `autostart-extra-apps.ps1` | Extra group from `config/groups.psd1`; includes TWS, excludes maintenance and login workers |
-| `autostart-trading-apps.ps1` | Full group: maintenance + extra apps; does not include market login workers; always waits |
+| `autostart-extra-apps.ps1` | Extra group from `config/groups.psd1`; includes TWS, excludes API services and group login coordinators; individual starters may dispatch login workers |
+| `autostart-trading-apps.ps1` | Full group: maintenance + extra apps; does not include group login coordinators; individual starters may dispatch login workers; always waits |
 | `complete-us-login.ps1` | Futubull then thinkorswim login workers; waits for each; does not launch the apps |
-| `start-ibgateway.ps1` | `-TimeoutSeconds 300` default; `-UseDirectExe` for manual login |
+| `start-ibgateway.ps1` | `-TimeoutSeconds 300` default; `-UseDirectExe` for manual live login; `-Paper` and optional `-PrepareOnly` for dedicated paper mode |
 | `start-futu-opend.ps1` | `-TimeoutSeconds 180` default |
 | `start-tws.ps1` | `-TimeoutSeconds 60` default; `-UseDirectExe` for manual login |
 | `start-ibkr-desktop.ps1` | Standalone; `-InstallDir 'C:\ntws'`, `-TimeoutSeconds 60` defaults |
@@ -29,7 +29,7 @@ Run from the repository root in 64-bit Windows PowerShell 5.1, for example `.\st
 
 Market, maintenance, and extra group commands accept `-Wait` and `-TimeoutSeconds` (default 600, range 1–3600). Without `-Wait`, success means dispatch only. The full-group command accepts these parameters but forces waiting even with `-Wait:$false`. A wait timeout does not terminate workers or applications. Restart commands dispatch that full-group worker asynchronously, so their return does not confirm startup completion.
 
-`start-shinny.ps1`, `start-yongchun.ps1`, `start-schwab.ps1`, and `start-futubull.ps1` run their login worker by default after launching the application; `-NoLogin` skips it. The app is only logged in when this call actually launched it — an already-running application is left alone (run `login-zsqh-clients.ps1`, `login-thinkorswim.ps1`, or `login-futubull.ps1` directly instead). Group dispatch adds `-NoLogin` for starters whose application is already covered by a login worker in that group ([config/logins.psd1](../config/logins.psd1)), so two workers never contend for the shared desktop input lock. Re-running a group whose clients are already authenticated stays successful: the ZSQH worker recognizes 快期3 by its live main window and 咏春大师2 by its login form being hidden to the tray, and sends no input in either case.
+`start-shinny.ps1`, `start-yongchun.ps1`, `start-schwab.ps1`, and `start-futubull.ps1` run their login worker by default after launching the application; `-NoLogin` skips it. The app is only logged in when this call actually launched it — an already-running application is left alone (run `login-zsqh-clients.ps1`, `login-thinkorswim.ps1`, or `login-futubull.ps1` directly instead). Group dispatch adds `-NoLogin` for starters whose application is already covered by a login worker in that group ([config/logins.psd1](../config/logins.psd1)), to avoid duplicate ownership inside that group. Separate concurrent group invocations can still contend for the shared desktop input lock. Re-running a group whose clients are already authenticated stays successful: the ZSQH worker recognizes 快期3 by its live main window and 咏春大师2 by its login form being hidden to the tray, and sends no input in either case.
 
 Workers launch in separate Windows PowerShell processes with a short stagger. Membership order is not a dependency/readiness barrier. Only the US login coordinator explicitly serializes its two login workers. Do not run competing GUI login workflows at once.
 
@@ -102,7 +102,7 @@ Auxiliary stops include TradingView, thinkorswim, wh6, AlgoMaster, Q73N, Futubul
 
 Graceful closure is attempted before the existing bounded force phase. Force can lose unsaved application state or disconnect clients; use these commands only when intended. Root wrappers preserve errors, and restart launch is cancelled if a stop fails.
 
-A local IBC batch or external watchdog may respawn a stopped process. The scripts do not indiscriminately kill cmd/Java/powershell parents or unknown replacement processes. Review the supervisor configuration manually if a restart does not stay stopped. TWS/Desktop/Gateway sharing an IBKR login can displace one another's sessions; do not assume simultaneous sessions are supported. Before a new launch, TWS stops IBKR Desktop, and IBKR Desktop stops TWS and IB Gateway (graceful close, then bounded force). TWS does not explicitly stop Gateway, and Gateway does not stop TWS or Desktop. Already-running starters skip these launch-time stops. Shared-credential conflicts can therefore still occur, particularly in the full group.
+A local IBC batch or external watchdog may respawn a stopped process. The scripts do not indiscriminately kill cmd/Java/powershell parents or unknown replacement processes. Review the supervisor configuration manually if a restart does not stay stopped. TWS/Desktop/Gateway sharing an IBKR login can displace one another's sessions; do not assume simultaneous sessions are supported. Before a new launch, TWS rejects a running Desktop and Desktop rejects running TWS/Gateway sessions. These guards do not close clients. Already-running target applications are reused. TWS and Gateway do not block one another locally; no global mutex prevents an external launcher racing a conflict check. Shared-credential conflicts can therefore still occur, particularly in the full group.
 
 ## Tasks, tray, runtime maintenance
 
@@ -140,10 +140,37 @@ entire result to equal its existing expected paper account list. Never change
 that allowlist to fit the observed session. Enabling order submission is a
 separate explicit operator decision; this preparation does not enable it.
 
-A pre-existing WSL user unit `ibkr-paper-start.service` invokes `-Paper` at boot
-on this host. This source change does not register, enable, start, or restart the
-unit. The test suite covers mode/port isolation, live-batch preservation, ownership,
+An earlier workstation had a WSL user unit invoking paper startup at boot. That is machine-specific history, not a component installed or verified by this repository. Inspect any external supervisor independently; source changes do not register, enable, start, or restart it. The test suite covers mode/port isolation, live-batch preservation, ownership,
 credential failures, and prepare-only behavior using synthetic fixtures.
 
 The separate settings/log directories follow the
 [IBC multiple-instance guidance](https://github.com/IbcAlpha/IBC/blob/master/userguide.md#multiple-ibc-instances).
+
+## Recovery and evidence checklist
+
+1. Record the original command, its exit, group/app log timestamps and failing worker. Read logs before repeating a start. A wait timeout leaves its workers running and may hide a later success.
+2. Establish each application's process state, then owned API readiness where relevant, then authentication/account state. Treat absent or stale evidence as unknown. Project logs are append-only text, not an account-state database.
+3. Inspect manual passkey/MFA prompts and app-specific errors. Let the existing worker finish when possible. Do not loop credential submission or increase fingerprint tolerances to obtain a zero exit.
+4. If a client is already running, preserve it. Request an explicit stop/restart only when required operationally; a start request does not authorize eviction. Never restart OBS to force recording. An already-running recording is accepted only when its newest log reports recording with an output path and no failure.
+5. After a failure, verify successful workers independently. Aggregate failure is not rollback: OpenD/Gateway can be healthy while OBS or another worker failed. Restarting the whole workspace can repeat already-completed actions.
+
+For a source rollback, retain private IBC/settings/config and the current dirty checkout first; select a previously reviewed source revision in a separate checkout for offline inspection. Local IBC absolute paths require review before using another checkout. A Git rollback does not undo registry/task edits, authentication, launched processes, recordings, or broker sessions. Restore operational state through explicit local actions, not an automatic source rollback hook.
+
+### Other public tools and administrative commands
+
+The complete command-to-source mapping is [entrypoints.psd1](../config/entrypoints.psd1). Inspect parameter declarations without invoking script bodies (PowerShell `Get-Command .\start-ibgateway.ps1 -Syntax` reads command metadata). Helpers imported with dot-sourcing are internal libraries, not stable external APIs.
+
+| Commands | Effect and boundary |
+| --- | --- |
+| `login-futubull.ps1`, `login-thinkorswim.ps1`, `login-zsqh-clients.ps1` | Explicit authentication workers; can submit credentials; use only in the intended idle desktop. TestOnly observations are not offline unit tests. |
+| `update-ibkr-credentials.ps1` | Copies the configured live IBKR item into CurrentUser DPAPI storage; may require 1Password authorization. |
+| `setup-autostart-task.ps1` | Explicit task registration/replacement; disabled unless `-Enable`. |
+| `enable-win-autologon.ps1` | Elevated manual registry administration; `-Disable` disables/removes relevant stored state. Never part of launch or CI. |
+| `capture-window.ps1` | Requires `-Hwnd` and `-Out`; writes a potentially sensitive image. |
+| `uia-list.ps1`, `uia-helper.ps1` | Desktop UI inspection; helper `-Invoke` can act on a matching element and requires a positive `-ProcessId`. Not a validation command. |
+| `show-credentials.ps1`, `type-secret.ps1` | Sensitive manual tools; one prints secrets and one injects a selected field into the focused window. Never run to audit docs or CI. |
+| `common.ps1`, `ui-input.ps1`, `window-util.ps1` | Dot-source compatibility bridges; not application startup commands. |
+
+## Recording limits
+
+Recording confirmation is an OBS log observation, not a live WebSocket query. The new-process path ignores pre-existing log files; the existing-process path chooses the newest OBS log. A process that dies without a final stop/failure marker, or a mismatched newest log, can leave stale evidence. Verify the OBS UI when operational certainty is required. The launcher does not pause/resume recording or control an already-running OBS through input. `-NoRecord` bypasses recording verification for an individual start only; workspace groups do not pass it.
