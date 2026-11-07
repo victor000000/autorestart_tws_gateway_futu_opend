@@ -59,6 +59,7 @@ function Get-ObsRecordingState {
             $state.OutputFile = $Matches[1]
         }
         elseif ($line -match 'Failed to start recording|Could not start recording|Recording failed') {
+            $state.Recording = $false
             $state.Failure = $line
         }
     }
@@ -74,7 +75,7 @@ function Wait-ObsRecordingStart {
     param(
         [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$ExistingLogPaths,
         [Parameter(Mandatory = $true)][datetime]$Since,
-        [ValidateRange(1, 600)][int]$TimeoutSeconds = 60
+        [ValidateRange(1, 3600)][int]$TimeoutSeconds = 60
     )
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
