@@ -32,11 +32,10 @@ if ($started) {
 # report what it is actually doing instead of claiming a start that did not happen.
 $log = Get-ObsLogFiles | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $log) {
-    Write-AppLog 'WARN: OBS is already running; its log is unavailable and the recording state is unknown.' 'apps'
-    return
+    throw 'OBS is already running; its log is unavailable and recording cannot be verified.'
 }
 $state = Get-ObsRecordingState -LogPath $log.FullName
-if ($state.Recording) {
+if ($state.Recording -and $state.OutputFile -and -not $state.Failure) {
     Write-AppLog "OBS is already running and recording: $($state.OutputFile)" 'apps'
     return
 }
