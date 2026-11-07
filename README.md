@@ -87,3 +87,7 @@ Edit implementations under `scripts/` and shared helpers under `src/`; root `.ps
 ```
 
 Production launchers use Windows PowerShell 5.1. CI validates offline behavior on Windows PowerShell 5.1 and PowerShell 7; it does not establish live vendor UI compatibility. See the [testing guide](docs/testing.md) before changing runtime behavior.
+
+## Read the design and operational contracts
+
+Start with [setup](docs/setup.md), then [operations and recovery](docs/operations.md). [Architecture](docs/architecture.md#contracts-and-state-provenance) defines what launch, readiness and recording evidence mean; [testing](docs/testing.md#documentation-validation) explains offline checks and CI limits. This workstation tool has no continuous deployment or order API. Version 0.0.3 is the current source version; later documentation corrections are tracked in the [documentation audit](docs/documentation-audit.md), separately from the dated release record.
