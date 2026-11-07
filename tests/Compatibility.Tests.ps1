@@ -10,11 +10,12 @@ Describe 'Group contracts and worker results' {
         Mock Start-ProjectScript { [pscustomobject]@{Id=123} }
         Mock Wait-ProjectProcesses {}
     }
-    It 'keeps maintenance limited to the two API applications' {
+    It 'starts maintenance API applications and OBS recording' {
         Invoke-AppGroup -Name maintenance
-        Should -Invoke Start-ProjectScript -Times 2
+        Should -Invoke Start-ProjectScript -Times 3
         Should -Invoke Start-ProjectScript -Times 1 -ParameterFilter { $Name -eq 'start-futu-opend.ps1' }
         Should -Invoke Start-ProjectScript -Times 1 -ParameterFilter { $Name -eq 'start-ibgateway.ps1' }
+        Should -Invoke Start-ProjectScript -Times 1 -ParameterFilter { $Name -eq 'start-obs.ps1' }
         Should -Invoke Wait-ProjectProcesses -Times 0
     }
     It 'uses TWS instead of IBKR Desktop and serializes US logins' {
@@ -26,7 +27,7 @@ Describe 'Group contracts and worker results' {
     }
     It 'waits and aggregates workers only when requested' {
         Invoke-AppGroup -Name maintenance -Wait
-        Should -Invoke Wait-ProjectProcesses -Times 1 -ParameterFilter { $Processes.Count -eq 2 }
+        Should -Invoke Wait-ProjectProcesses -Times 1 -ParameterFilter { $Processes.Count -eq 3 }
     }
     It 'propagates a failed dispatch rather than logging success' {
         Mock Start-ProjectScript { throw 'synthetic dispatch failure' }
@@ -159,15 +160,19 @@ Describe 'Configured application launch reporting' {
 
 Describe 'Compatibility entry points in an inert sandbox' {
     BeforeEach {
+        # WSL may inherit PATHEXT=.CPL; native test-host invocation needs .EXE.
+        $script:PreviousPathExt = $env:PATHEXT
+        $env:PATHEXT = (@('.EXE') + @($env:PATHEXT -split ';') | Select-Object -Unique) -join ';'
         $script:Sandbox = Join-Path $TestDrive ([guid]::NewGuid().ToString() + ' with spaces')
         $script:Target = Join-Path $Sandbox 'scripts/apps'
         $null = New-Item -ItemType Directory -Path $Target -Force
         Copy-Item -LiteralPath (Join-Path $RepositoryRoot 'start-ibkr-desktop.ps1') -Destination $Sandbox
         $script:HostPath = (Get-Process -Id $PID).Path
     }
+    AfterEach { $env:PATHEXT = $script:PreviousPathExt }
     It 'forwards named parameters and defaults without running the real implementation' {
         Set-Content -LiteralPath (Join-Path $Target 'start-ibkr-desktop.ps1') -Value 'param([string]$InstallDir = "C:\ntws", [int]$TimeoutSeconds = 60); "$InstallDir|$TimeoutSeconds"' -Encoding UTF8
-        $result = & $HostPath -NoProfile -File (Join-Path $Sandbox 'start-ibkr-desktop.ps1') -InstallDir 'synthetic path with spaces' -TimeoutSeconds 12
+        $result = & $HostPath -NoProfile -WindowStyle Hidden -File (Join-Path $Sandbox 'start-ibkr-desktop.ps1') -InstallDir 'synthetic path with spaces' -TimeoutSeconds 12
         $LASTEXITCODE | Should -Be 0
         $result | Should -BeExactly 'synthetic path with spaces|12'
     }
@@ -176,7 +181,7 @@ Describe 'Compatibility entry points in an inert sandbox' {
         $previousPreference = $ErrorActionPreference
         try {
             $ErrorActionPreference = 'Continue'
-            $null = & $HostPath -NoProfile -File (Join-Path $Sandbox 'start-ibkr-desktop.ps1') 2>&1
+            $null = & $HostPath -NoProfile -WindowStyle Hidden -File (Join-Path $Sandbox 'start-ibkr-desktop.ps1') 2>&1
             $exitCode = $LASTEXITCODE
         }
         finally { $ErrorActionPreference = $previousPreference }
