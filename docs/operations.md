@@ -8,7 +8,7 @@ Run from the repository root in 64-bit Windows PowerShell 5.1, for example `.\st
 
 | Command | Scope / options |
 | --- | --- |
-| `start-data-maintenance.ps1` | Futu OpenD + Gateway |
+| `start-data-maintenance.ps1` | Futu OpenD + Gateway + OBS recording |
 | `start-cn-market.ps1` | CN apps + ZSQH login worker |
 | `start-us-market.ps1` | US apps including TWS + sequential Futubull/thinkorswim login workers |
 | `autostart-extra-apps.ps1` | Extra group from `config/groups.psd1`; includes TWS, excludes maintenance and login workers |
@@ -65,7 +65,7 @@ Process presence is sufficient for ordinary starters. API starters additionally 
 | 快期3/Q73N does not start | Check `%APPDATA%\Q73N_cnzsqh_3_standard\dir.xml`: `<current>` names the installed build, while a newer directory can hold only an unsigned upgrade stub. See [install paths](setup.md#install-paths-and-configuration). |
 | Wait times out | Inspect visible login/passkey/MFA prompts and app logs. Workers remain running; a retry is not cancellation. |
 | Gateway/OpenD process exists but readiness fails | Verify login and configured API port, then check listener ownership. Another process using 4001/11111 does not count. |
-| IBKR session is displaced | Choose the required IBKR product. TWS stops Desktop; Desktop stops TWS/Gateway. Gateway does not evict competing apps locally. The full group can launch Gateway and TWS concurrently. |
+| IBKR session is displaced | Choose the required IBKR product. TWS refuses a new launch while Desktop runs; Desktop refuses a new launch while TWS/Gateway runs. Existing clients are preserved. Gateway does not evict competing apps locally. The full group can launch Gateway and TWS concurrently. |
 | Executable missing or wrong version starts | Compare [install defaults](setup.md#install-paths-and-configuration) with actual installs and customized IBC paths. |
 | Credential store unavailable after moving user/machine | DPAPI is bound to its Windows context. Recreate the IBKR entry with the updater under the intended user; do not print or hand-copy decrypted secrets. |
 | IBC config write fails | Check private-folder permissions and credential validity. Failed publication is an error; do not make the folder broadly writable. |
