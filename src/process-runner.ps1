@@ -379,3 +379,12 @@ function Start-ManagedApplication {
     $null = Wait-AppProcess -Name $Name -TimeoutSeconds $TimeoutSeconds
     Write-AppLog "$Name process detected (authentication may still require manual action)." 'apps'
 }
+
+function Assert-NoIbLaunchConflict {
+    # Starting one client never authorizes stopping another trading session.
+    param([Parameter(Mandatory = $true)][ValidateSet('Tws', 'Desktop')][string]$Application)
+    $conflicts = if ($Application -eq 'Tws') { @(Get-IbkrDesktopProcesses) } else { @(Get-IbSessionProcesses) }
+    if (@($conflicts).Count -gt 0) {
+        throw "Cannot start $Application while a conflicting IBKR client is running. Existing clients were preserved; explicitly stop the conflicting client before starting this one."
+    }
+}
