@@ -162,3 +162,51 @@ Describe 'OBS starter contract' {
         $literals | Should -Contain '--startrecording'
     }
 }
+
+Describe 'Existing OBS recording verification fails closed' {
+    BeforeAll {
+        # Execute only the existing-process verification branch; no starter body.
+        $source = [IO.File]::ReadAllText((Join-Path $script:ProjectRoot 'scripts/apps/start-obs.ps1'))
+        $offset = $source.IndexOf('# An already-running OBS')
+        if ($offset -lt 0) { throw 'Missing isolated verification branch' }
+        $script:VerifyExistingObs = [scriptblock]::Create($source.Substring($offset))
+    }
+    BeforeEach {
+        Mock Write-AppLog {}
+        Mock Get-ObsLogFiles { [pscustomobject]@{ FullName = 'synthetic.txt'; LastWriteTime = Get-Date } }
+        Mock Get-ObsRecordingState { [pscustomobject]@{ Recording = $true; OutputFile = 'test.mp4'; Failure = $null } }
+    }
+    It 'rejects an unavailable log rather than succeeding with unknown recording' {
+        Mock Get-ObsLogFiles { @() }
+        { & $script:VerifyExistingObs } | Should -Throw '*cannot be verified*'
+        Should -Invoke Write-AppLog -Times 0 -Exactly
+    }
+    It 'rejects a start marker without an output file' {
+        Mock Get-ObsRecordingState { [pscustomobject]@{ Recording = $true; OutputFile = $null; Failure = $null } }
+        { & $script:VerifyExistingObs } | Should -Throw
+    }
+    It 'rejects recording failure even after a start marker' {
+        Mock Get-ObsRecordingState { [pscustomobject]@{ Recording = $true; OutputFile = 'test.mp4'; Failure = 'Recording failed' } }
+        { & $script:VerifyExistingObs } | Should -Throw
+    }
+    It 'reports success only with a recording and an output file' {
+        & $script:VerifyExistingObs
+        Should -Invoke Write-AppLog -Times 1 -Exactly -ParameterFilter { $Message -like '*already running and recording*' }
+    }
+}
+
+Describe 'OBS failure and recovery ordering' {
+    It 'invalidates a previously started recording on failure and recovers only on a new start' {
+        $path = Join-Path $TestDrive 'recording.txt'
+        @('==== Recording Start', "Writing MP4 file 'old.mp4'", 'Recording failed') |
+            Set-Content -LiteralPath $path -Encoding UTF8
+        $state = Get-ObsRecordingState -LogPath $path
+        $state.Recording | Should -BeFalse
+        $state.Failure | Should -Not -BeNullOrEmpty
+        @('==== Recording Start', "Writing MP4 file 'new.mp4'") | Add-Content -LiteralPath $path -Encoding UTF8
+        $state = Get-ObsRecordingState -LogPath $path
+        $state.Recording | Should -BeTrue
+        $state.Failure | Should -BeNullOrEmpty
+        $state.OutputFile | Should -Be 'new.mp4'
+    }
+}
