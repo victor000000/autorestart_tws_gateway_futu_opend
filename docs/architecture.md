@@ -32,7 +32,7 @@ Private scratch scripts/screenshots already in `logs/` are not maintained source
 
 ## Regression fixes
 
-The tests cover the Excel/shared-log-variable collision, Office lock-file exclusion, numeric version ordering, silent config/launch failures, incorrect username-to-password fallback, Java Properties escapes, stale authentication beyond a short log tail, exact Gateway-vs-TWS process matching, listener ownership, login ambiguity/focus guards, cold-start waiting, missing tray Exit handler, IBKR Desktop shutdown coverage, reused-PID safety, restart gating, and truthful task/registry errors.
+The tests cover the Excel/shared-log-variable collision, Office lock-file exclusion, numeric version ordering, silent config/launch failures, incorrect username-to-password fallback, Java Properties escapes, stale authentication beyond a short log tail, exact Gateway-vs-TWS process matching, listener ownership, login ambiguity/focus guards, cold-start waiting, missing tray Exit handler, IBKR conflict preservation and explicit shutdown coverage, reused-PID safety, restart gating, and truthful task/registry errors.
 
 ## Deliberate limits
 
@@ -62,3 +62,42 @@ tools/               Validation, dependency bootstrap, wrapper generation
 .github/workflows/   Windows offline CI
 *.ps1                Public compatibility wrappers and dot-source bridges
 ```
+
+## Launch and completion design
+
+```mermaid
+flowchart TD
+    A[Root compatibility command] --> B[Implementation and shared helpers]
+    B --> C[Group membership and login suppression]
+    C --> D[Hidden PowerShell child workers]
+    D --> E[App launch or reuse]
+    E --> F[Per-app readiness or login worker]
+    D --> G[Optional aggregate wait]
+    G --> H[Worker exits and timeout]
+    F --> I[Private app and vendor logs]
+```
+
+The 800 ms dispatch stagger limits simultaneous startup pressure but is not a dependency graph. The aggregate deadline is created after dispatch and shared across child waits; it is not a cancellation deadline propagated into each worker. Individual starter timeouts are process/readiness waits, and login workers have their own bounds. A slow or timed-out worker can continue after the calling group returns. This preserves a partially authenticated desktop rather than killing applications automatically.
+
+Individual starters use the launch/reuse boolean to avoid re-authenticating an existing app. Groups suppress individual workers only when a listed coordinator covers them. Thus extra/all groups can still run multiple individual login workers; their nonblocking UI mutex can reject contention. Only `complete-us-login.ps1` explicitly waits for Futubull and then thinkorswim, collecting failures from both. The full group is not equivalent to starting CN and US with their coordinators.
+
+## Contracts and state provenance
+
+| Boundary | Implemented contract | What it does not prove |
+| --- | --- | --- |
+| Root command | Forwards bound parameters and converts script failure to a nonzero process exit | Authentication or rollback |
+| Group dispatch | Each mapped entry is dispatched in configured order | Child readiness in that order |
+| Group wait | Observes exits against one deadline; aggregates nonzero workers | Termination of unfinished workers |
+| Ordinary app | Detects named process or recognized IBC marker; existing targets reused | Correct account or upstream connection |
+| API readiness | Exact expected process owns local listener and accepts TCP | Broker protocol handshake, entitlements or account identity |
+| OBS | Recording marker, output path and no later recorded failure | Durable video integrity or future continued recording |
+| UI login | App-specific screen/window/account checks and shared input lock | Atomic input against every other desktop actor |
+| Paper Gateway | Exact config/PID ownership, isolated port/settings/logs, read-only config | Expected managedAccounts equality; operator must verify it |
+
+There is no HTTP API, market-data lake, order router, or persistence schema for trading records here. Config files are PowerShell data tables; wrappers and helper functions are local implementation boundaries. Consumers should use public entry points and observed logs, not assume helper signatures or log text are a versioned machine API. Version is the plain text [VERSION](../VERSION); no package manager installs the launcher.
+
+Credential flow is user-bound DPAPI → exact field selection → escaped plaintext IBC configuration with restricted permissions. Live startup may use the `op` CLI fallback; paper startup cannot. Private config writes are atomic publications but do not imply forensic erasure of older copies. Source and offline test reports can be published; logs/screenshots/configs may carry account context and stay private.
+
+## Source and release migration
+
+A source-only release changes scripts, config defaults and guides. It does not upgrade vendor clients, migrate credentials, register tasks, rewrite IBC runtime batches, or activate a desktop. Version 0.0.3 adds maintenance recording and conflict-preserving IBKR starts: operators previously relying on automatic client closure must explicitly resolve the conflict, and maintenance can now fail its wait when OBS recording cannot be verified. API services already started remain running on such failure. See [release history](release-0.0.3.md) for dated test/publication evidence and [current documentation audit](documentation-audit.md) for later corrections.
